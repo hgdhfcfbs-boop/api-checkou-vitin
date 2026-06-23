@@ -4,44 +4,44 @@ import mercadopago
 import os
 from dotenv import load_dotenv
 
-# 1. Abre o cofre e conecta no Mercado Pago
 load_dotenv()
 token = os.getenv("MERCADOPAGO_ACCESS_TOKEN")
 sdk = mercadopago.SDK(token)
 
-# 2. Inicia o servidor Flask
 app = Flask(__name__)
-CORS(app) # Isso permite que o HTML converse com o Python em paz
+# Isso libera o acesso de qualquer site para o seu servidor
+CORS(app, resources={r"/*": {"origins": "*"}}) 
 
-# 3. Cria a rota que vai gerar o Pix
-@app.route('/gerar-pix', methods=['POST'])
+@app.route('/gerar-pix', methods=['POST', 'OPTIONS'])
 def gerar_pix():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
     dados = request.json
     valor = float(dados.get('valor', 2.00))
 
     dados_pagamento = {
         "transaction_amount": valor,
-        "description": "Teste Beta - Checkout VIP",
+        "description": "Checkout VIP - Vitin",
         "payment_method_id": "pix",
-        "payer": {
-            "email": "teste@checkout.com"
-        }
+        "payer": {"email": "cliente@vitin.com"}
     }
 
-    resposta = sdk.payment().create(dados_pagamento)
-    pagamento = resposta["response"]
+    try:
+        resposta = sdk.payment().create(dados_pagamento)
+        pagamento = resposta["response"]
+        
+        if "point_of_interaction" in pagamento:
+            transaction_data = pagamento["point_of_interaction"]["transaction_data"]
+            return jsonify({
+                "sucesso": True,
+                "qr_code_base64": transaction_data["qr_code_base64"],
+                "qr_code_copia_cola": transaction_data["qr_code"]
+            })
+    except Exception as e:
+        return jsonify({"sucesso": False, "erro": str(e)}), 400
+    
+    return jsonify({"sucesso": False}), 400
 
-    if "point_of_interaction" in pagamento:
-        transaction_data = pagamento["point_of_interaction"]["transaction_data"]
-        return jsonify({
-            "sucesso": True,
-            "qr_code_base64": transaction_data["qr_code_base64"],
-            "qr_code_copia_cola": transaction_data["qr_code"]
-        })
-    else:
-        return jsonify({"sucesso": False}), 400
-
-# 4. Liga a máquina
 if __name__ == '__main__':
-    print("🚀 Servidor Pix rodando nas sombras... (Porta 5000)")
-    app.run(port=5000)
+    app.run()
