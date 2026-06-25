@@ -62,8 +62,9 @@ def gerar_pix():
         return jsonify({"sucesso": False, "erro": str(e)}), 500
 
 # 3. ROTA DE VALIDAÇÃO DE CHAVE (A MESTRA)
-@app.route('/validar-chave', methods=['POST'])
+@app.route('/validar-chave', methods=['POST', 'OPTIONS'])
 def validar_chave():
+    if request.method == 'OPTIONS': return '', 200
     dados = request.json
     chave = dados.get('chave', '').upper().strip()
     
@@ -101,6 +102,27 @@ def webhook():
                 supabase.table("users").insert({"email": email_cliente, "access_key": nova_chave}).execute()
             
     return '', 200
+
+# 5. ROTA PARA CHECAR O STATUS DO PAGAMENTO EM TEMPO REAL (O RADAR)
+@app.route('/status-pagamento/<payment_id>', methods=['GET', 'OPTIONS'])
+def status_pagamento(payment_id):
+    if request.method == 'OPTIONS': return '', 200
+    try:
+        # Pergunta direto pro Mercado Pago o status desse ID
+        payment = sdk.payment().get(payment_id).get('response')
+        status = payment.get('status')
+        
+        if status == 'approved':
+            # Se pagou, pega o e-mail e busca a chave gerada no Supabase pelo Webhook
+            email = payment.get('payer', {}).get('email')
+            user_res = supabase.table("users").select("access_key").eq("email", email).execute()
+            
+            chave = user_res.data[0]['access_key'] if user_res.data else None
+            return jsonify({"status": "approved", "chave": chave})
+            
+        return jsonify({"status": status}) # Devolve 'pending' se ainda não pagou
+    except Exception as e:
+        return jsonify({"status": "error", "detalhes": str(e)}), 400
 
 if __name__ == '__main__':
     app.run()
